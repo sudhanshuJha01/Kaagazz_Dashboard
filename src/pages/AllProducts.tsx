@@ -37,7 +37,8 @@ const AllProducts = () => {
       <section className="bg-[#f6f4ef] px-6 py-10 font-serif text-[#1e1e1e] min-h-screen mt-[50px] w-screen">
       <div className="max-w-7xl mx-auto">
         {/* Heading */}
-        <div className="mb-14 text-center">
+        <div className="mb-10 relative text-center">
+        <div>
           <h2 className="text-5xl font-bold tracking-tight">
             Ecokaagazz Collection
           </h2>
@@ -45,6 +46,16 @@ const AllProducts = () => {
             Curated elegance. Sustainable luxury.
           </p>
         </div>
+
+        {/* Upload Button (absolute right) */}
+        <button
+          onClick={() => navigate("/admin/upload")}
+          className="mt-4 px-6 py-3 bg-[#5d4037] text-black rounded-full text-sm hover:bg-[#3e2f22] transition-colors duration-300"
+        >
+          + Upload New Product
+        </button>
+      </div>
+
 
         {/* Mobile Filter Toggle Button */}
         <div className="lg:hidden mb-6 flex justify-end">
