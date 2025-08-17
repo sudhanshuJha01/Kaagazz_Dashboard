@@ -1,26 +1,26 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Home, Package, ClipboardList, ChevronDown, LogOut } from "lucide-react";
+import { Home, Package, ClipboardList } from "lucide-react";
 
 const AdminHeader = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
-  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
+  // const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
-  const handleMouseEnter = (menu: string) => {
-    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-    setHoveredMenu(menu);
-  };
+  // const handleMouseEnter = (menu: string) => {
+  //   if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+  //   setHoveredMenu(menu);
+  // };
 
-  const handleMouseLeave = () => {
-    hoverTimeout.current = setTimeout(() => {
-      setHoveredMenu(null);
-    }, 500);
-  };
+  // const handleMouseLeave = () => {
+  //   hoverTimeout.current = setTimeout(() => {
+  //     setHoveredMenu(null);
+  //   }, 500);
+  // };
 
   return (
     <header className="fixed top-0 left-0 w-full py-2 px-8 md:px-16 flex justify-between items-center bg-[url('/bg3.png')] bg-cover bg-center bg-no-repeat z-50 border-b border-gray-200">
