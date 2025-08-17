@@ -27,7 +27,7 @@ const AdminOrders = () => {
     const fetchOrders = async () => {
       try {
         setLoading(true);
-        const res = await fetch("https://backendecokaagazz-production.up.railway.app/api/order/list");
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/order/list`);
         if (!res.ok) throw new Error("Failed to fetch orders");
         const data = await res.json();
         setOrders(data.orders || []);
@@ -54,7 +54,7 @@ const AdminOrders = () => {
 
     try {
       const res = await fetch(
-        `https://backendecokaagazz-production.up.railway.app/api/order/update-status/${orderId}`,
+        `${import.meta.env.VITE_BACKEND_URL}/api/order/update-status/${orderId}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
