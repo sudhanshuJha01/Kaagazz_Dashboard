@@ -1,11 +1,13 @@
 import type { Config } from "tailwindcss";
 import typography from "@tailwindcss/typography";
+import tailwindcssAnimate from 'tailwindcss-animated'; // <<< IMPORTED
+
 export default {
   darkMode: "class",
   content: [
     "./pages/**/*.{ts,tsx}",
-  "./src/**/*.{js,ts,jsx,tsx}",
-  "./app/**/*.{ts,tsx}"
+    "./src/**/*.{js,ts,jsx,tsx}",
+    "./app/**/*.{ts,tsx}",
   ],
   prefix: "",
   theme: {
@@ -92,5 +94,8 @@ export default {
       },
     },
   },
-  plugins: [typography],
+  plugins: [
+    typography,
+    tailwindcssAnimate, // <<< ADDED
+  ],
 } satisfies Config;

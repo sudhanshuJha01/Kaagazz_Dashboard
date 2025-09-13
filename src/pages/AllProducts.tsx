@@ -1,159 +1,195 @@
-import Header from "../components/Header";
-import { Link } from "react-router-dom";
-import { products as allProducts } from "../data/product";
-import { useState, useEffect } from "react";
-import { IoFilter } from "react-icons/io5";
-import { useLocation, useNavigate } from "react-router-dom";
-
-const categories = ["All", "Stationery", "Gift Sets", "Paper", "Chitrayan"];
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getProducts, deleteProduct, applyBulkDiscount } from '../services/api';
+import type { Product } from '../types';
+import { toast } from 'sonner';
+import { Trash2, Pencil, PlusCircle, Sprout } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const AllProducts = () => {
-  const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const initialCategory = queryParams.get("category") || "All";
-  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-
-  // Sync state if URL changes
-  useEffect(() => {
-    const cat = new URLSearchParams(location.search).get("category");
-    if (cat && cat !== selectedCategory) {
-      setSelectedCategory(cat);
-    }
-  }, [location.search]);
-
-  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const navigate = useNavigate();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [isBulkDialogOpen, setIsBulkDialogOpen] = useState(false);
+  const [bulkDiscount, setBulkDiscount] = useState(0);
 
-  // Filter products from local data
-  const products =
-    selectedCategory === "All"
-      ? allProducts
-      : allProducts.filter((p) => p.category === selectedCategory);
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const data = await getProducts();
+      setProducts(data.products);
+    } catch (error) {
+      toast.error("Failed to fetch products.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchProducts(); }, []);
+
+  const handleSelectAll = (checked: boolean | 'indeterminate') => {
+    if (checked) {
+      setSelectedProducts(products.map(p => p._id));
+    } else {
+      setSelectedProducts([]);
+    }
+  };
+
+  const handleSelectOne = (productId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedProducts(prev => [...prev, productId]);
+    } else {
+      setSelectedProducts(prev => prev.filter(id => id !== productId));
+    }
+  };
+
+  const handleDeleteClick = (productId: string) => {
+    setProductToDelete(productId);
+    setShowDeleteDialog(true);
+  };
+  
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
+    try {
+      await deleteProduct(productToDelete);
+      toast.success("Product deleted successfully!");
+      fetchProducts();
+    } catch (error) {
+      toast.error("Failed to delete product.");
+    } finally {
+      setShowDeleteDialog(false);
+      setProductToDelete(null);
+    }
+  };
+  
+  const handleApplyBulkDiscount = async () => {
+    if (selectedProducts.length === 0) return toast.error("No products selected.");
+    if (bulkDiscount < 0 || bulkDiscount > 100) return toast.error("Discount must be between 0 and 100.");
+
+    try {
+        const res = await applyBulkDiscount(selectedProducts, bulkDiscount);
+        toast.success(res.message);
+        fetchProducts(); // Refresh data
+        setIsBulkDialogOpen(false);
+        setSelectedProducts([]);
+        setBulkDiscount(0);
+    } catch (error: any) {
+        toast.error("Failed to apply discount.", { description: error.message });
+    }
+  };
+
+  if (loading) return <div className="text-center py-10 text-[#5C4033]">Loading products...</div>;
 
   return (
-    <>
-      <Header />
-
-      <section className="bg-[#f6f4ef] px-6 py-10 font-serif text-[#1e1e1e] min-h-screen mt-[50px] w-screen">
-      <div className="max-w-7xl mx-auto">
-        {/* Heading */}
-        <div className="mb-10 relative text-center">
-        <div>
-          <h2 className="text-5xl font-bold tracking-tight">
-            Ecokaagazz Collection
-          </h2>
-          <p className="mt-2 text-lg text-gray-600">
-            Curated elegance. Sustainable luxury.
-          </p>
-        </div>
-
-        {/* Upload Button (absolute right) */}
-        <button
-          onClick={() => navigate("/admin/upload")}
-          className="mt-4 px-6 py-3 bg-[#5d4037] text-black rounded-full text-sm hover:bg-[#3e2f22] transition-colors duration-300"
-        >
-          + Upload New Product
-        </button>
-      </div>
-
-
-        {/* Mobile Filter Toggle Button */}
-        <div className="lg:hidden mb-6 flex justify-end">
-          <button
-            onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)}
-            className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-full shadow-sm bg-white"
-          >
-            <IoFilter className="text-xl" />
-            <span>Filter</span>
-          </button>
-        </div>
-
-        {/* Layout */}
-        <div className="flex gap-10 flex-col lg:flex-row items-start justify-center">
-          {/* Sidebar */}
-          <div className="hidden lg:block w-[250px] bg-white/70 backdrop-blur-sm p-6 rounded-2xl shadow-md border border-gray-200 sticky top-28 self-start">
-            <h3 className="text-xl font-semibold mb-4 tracking-tight">
-              Categories
-            </h3>
-            <ul className="space-y-3">
-              {categories.map((cat) => (
-                <li
-                  key={cat}
-                  onClick={() => {
-                    setSelectedCategory(cat);
-                    navigate(`/products?category=${encodeURIComponent(cat)}`);
-                  }}
-                  className={`cursor-pointer text-sm px-3 py-1 rounded-full transition-all border 
-                    ${
-                      selectedCategory === cat
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-gray-600 border-gray-300 hover:border-black"
-                    }`}
-                >
-                  {cat}
-                </li>
-              ))}
-            </ul>
+    <div className="space-y-6">
+      <Card className="bg-white/80 border-none shadow-lg">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-2xl font-bold text-[#5C4033] font-serif">Manage Products</CardTitle>
+            <CardDescription>View, edit, or delete your products.</CardDescription>
           </div>
-
-          {/* Product Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-10 flex-1">
-            {products.map((product) => (
-              <Link
-                to={`/admin/edit/${product.id}`}
-                key={product.id}
-                className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition-all group"
-              >
-                {/* Product Image */}
-                <div className="w-full aspect-[4/5] overflow-hidden">
-                  <img
-                    src={product.images?.[0]}
-                    alt={product.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                </div>
-
-                {/* Product Content */}
-                <div className="p-4 space-y-2">
-                  <h3 className="text-base font-semibold truncate">
-                    {product.title}
-                  </h3>
-                  <p className="text-xs text-gray-500 line-clamp-2">
-                    {product.description}
-                  </p>
-
-                  <div className="text-yellow-500 text-xs">
-                    {"★".repeat(Math.floor(product.rating || 4))}
-                    <span className="text-gray-400 ml-1">
-                      ({Math.floor(Math.random() * 2000) + 1000})
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <span className="text-black">
-                      ₹{product.discountedPrice || product.price}
-                    </span>
-                    {product.discountedPrice &&
-                      product.discountedPrice < product.price && (
-                        <span className="line-through text-gray-400 text-xs">
-                          ₹{product.price}
-                        </span>
-                      )}
-                  </div>
-
-                  <button className="mt-2 px-3 py-1.5 bg-black text-white text-xs font-medium rounded-full hover:bg-gray-800 transition-all">
-                    Shop Now
-                  </button>
-                </div>
-              </Link>
-            ))}
+          <div className="flex gap-4">
+            {selectedProducts.length > 0 && (
+                <Button variant="outline" onClick={() => setIsBulkDialogOpen(true)}>
+                    <Sprout className="mr-2 h-4 w-4" /> Bulk Actions ({selectedProducts.length})
+                </Button>
+            )}
+            <Button onClick={() => navigate("/upload")} className="bg-[#5d4037] hover:bg-[#3e2f22]">
+              <PlusCircle className="mr-2 h-4 w-4" /> Add New Product
+            </Button>
           </div>
-        </div>
-      </div>
-    </section>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[50px]">
+                    <Checkbox onCheckedChange={handleSelectAll} checked={products.length > 0 && selectedProducts.length === products.length} />
+                </TableHead>
+                <TableHead>Product Name</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Original Price</TableHead>
+                <TableHead>Discount</TableHead>
+                <TableHead>Final Price</TableHead>
+                <TableHead>Stock</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {products.map((product) => {
+                const finalPrice = product.originalPrice * (1 - (product.discountPercent || 0) / 100);
+                return (
+                  <TableRow key={product._id}>
+                    <TableCell>
+                        <Checkbox onCheckedChange={(checked) => handleSelectOne(product._id, !!checked)} checked={selectedProducts.includes(product._id)} />
+                    </TableCell>
+                    <TableCell className="font-medium flex items-center gap-4">
+                      <img src={product.images?.[0] || 'https://via.placeholder.com/40'} alt={product.title} className="w-10 h-10 rounded-md object-cover" />
+                      {product.title}
+                    </TableCell>
+                    <TableCell>{product.category}</TableCell>
+                    <TableCell>₹{product.originalPrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-green-600">{product.discountPercent || 0}%</TableCell>
+                    <TableCell className="font-semibold">₹{finalPrice.toFixed(2)}</TableCell>
+                    <TableCell>{product.stock}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => navigate(`/products/edit/${product._id}`)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(product._id)} className="text-red-600 hover:text-red-700"><Trash2 className="h-4 w-4" /></Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
-    </>
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        {/* <<< FIX: Added bg-white to make the dialog solid */}
+        <AlertDialogContent className="bg-white">
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>This action cannot be undone. This will permanently delete the product.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Discount Dialog */}
+      <Dialog open={isBulkDialogOpen} onOpenChange={setIsBulkDialogOpen}>
+        {/* <<< FIX: Added bg-white to make the dialog solid */}
+        <DialogContent className="bg-white">
+            <DialogHeader>
+                <DialogTitle>Apply Bulk Discount</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <p>You have selected {selectedProducts.length} products.</p>
+                <div>
+                    <Label htmlFor="bulk-discount">Discount Percentage</Label>
+                    <Input id="bulk-discount" type="number" placeholder="e.g., 15" onChange={(e) => setBulkDiscount(Number(e.target.value))} />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsBulkDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleApplyBulkDiscount} className="bg-[#5d4037] hover:bg-[#3e2f22]">Apply Discount</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
-
 export default AllProducts;

@@ -1,149 +1,482 @@
-import { useState, useEffect } from "react";
-import AdminHeader from "../components/Header";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { getOrders, updateOrderStatus } from "../services/api";
+import type { Order } from "../types";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import {
+  Search,
+  Package,
+  User,
+  Mail,
+  Phone,
+  Home,
+  Calendar,
+  Truck,
+  Loader,
+  ListChecks,
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
-interface Order {
-  _id: string;
-  shippingAddress: {
-    name: string;
-    phone: string;
-    address: string;
-    email: string;
-  };
-  products: { productId: string; title: string; quantity: number; price: number }[];
-  totalAmount: number;
-  status: string;
-  createdAt: string;
-}
+// Custom hook for debouncing user input to reduce API calls
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+};
 
-const statusOptions = ["Order Placed", "Packed", "Shipped", "Delivered", "Returned", "confirmed"];
+const statusOptions = [
+  "all",
+  "processing",
+  "rejected",
+  "confirmed",
+  "shipped",
+  "pending",
+  "cancelled",
+];
+const sortOptions = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+  { value: "price_high", label: "Price: High to Low" },
+  { value: "price_low", label: "Price: Low to High" },
+];
+
+const StatCard = ({
+  title,
+  value,
+  icon,
+  color,
+}: {
+  title: string;
+  value: number;
+  icon: React.ReactNode;
+  color: string;
+}) => (
+  <Card className="bg-white/80 border-l-4" style={{ borderColor: color }}>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium text-[#5C4033]">
+        {title}
+      </CardTitle>
+      {icon}
+    </CardHeader>
+    <CardContent>
+      <div className="text-2xl font-bold">{value}</div>
+    </CardContent>
+  </Card>
+);
 
 const AdminOrders = () => {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [changedStatuses, setChangedStatuses] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [newStatus, setNewStatus] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const [filters, setFilters] = useState({
+    sort: "newest",
+    status: "all",
+    search: "",
+  });
+  const debouncedSearch = useDebounce(filters.search, 500);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = { ...filters, search: debouncedSearch };
+      const data = await getOrders(params);
+      setOrders(data.orders || []);
+    } catch (err) {
+      console.error("Failed to fetch orders:", err);
+      toast.error("Failed to fetch orders.");
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.sort, filters.status, debouncedSearch]);
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/order/list`);
-        if (!res.ok) throw new Error("Failed to fetch orders");
-        const data = await res.json();
-        setOrders(data.orders || []);
-        setLoading(false);
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || "Failed to load orders.");
-        setLoading(false);
-      }
-    };
     fetchOrders();
-  }, []);
+  }, [fetchOrders]);
 
-  const handleStatusChange = (orderId: string, newStatus: string) => {
-    setOrders((prev) =>
-      prev.map((o) => (o._id === orderId ? { ...o, status: newStatus } : o))
-    );
-    setChangedStatuses((prev) => ({ ...prev, [orderId]: newStatus }));
+  // Handle opening the dialog
+  const handleOrderClick = (order: Order) => {
+    setSelectedOrder(order);
+    setNewStatus(order.status);
+    setIsDialogOpen(true);
   };
 
-  const handleSave = async (orderId: string) => {
-    const newStatus = changedStatuses[orderId];
-    if (!newStatus) return;
+  // Handle closing the dialog
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    // Add a small delay to ensure dialog is fully closed before clearing state
+    setTimeout(() => {
+      setSelectedOrder(null);
+      setNewStatus("");
+      setIsUpdating(false);
+    }, 150);
+  };
 
+  const handleFilterChange = (
+    key: "sort" | "status" | "search",
+    value: string
+  ) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!selectedOrder || !newStatus || isUpdating) return;
+    
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL}/api/order/update-status/${orderId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: newStatus }),
-        }
+      setIsUpdating(true);
+      await updateOrderStatus(selectedOrder._id, newStatus);
+      
+      // Update the order in the local state immediately for better UX
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order._id === selectedOrder._id 
+            ? { ...order, status: newStatus }
+            : order
+        )
       );
-      if (!res.ok) throw new Error("Failed to update status");
-      setChangedStatuses((prev) => {
-        const copy = { ...prev };
-        delete copy[orderId];
-        return copy;
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Error updating order status");
+      
+      toast.success("Order status updated successfully!");
+      handleDialogClose();
+      
+      // Refresh the list after a short delay to ensure consistency
+      setTimeout(() => {
+        fetchOrders();
+      }, 500);
+      
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      toast.error("Failed to update status. Please try again.");
+      setIsUpdating(false);
     }
   };
 
-  if (loading)
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-10 h-10 border-4 border-[#5C4033] border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case "shipped":
+        return "success";
+      case "processing":
+        return "secondary";
+      case "pending":
+        return "secondary";
+      case "rejected":
+        return "destructive";
+      case "cancelled":
+        return "destructive";
+      default:
+        return "default";
+    }
+  };
 
-  if (error)
-    return <div className="text-center text-red-500 mt-10">{error}</div>;
+  const orderStats = useMemo(() => {
+    return {
+      total: orders.length,
+      pending: orders.filter(
+        (o) => o.status === "pending" || o.status === "processing"
+      ).length,
+      shipped: orders.filter((o) => o.status === "shipped").length,
+    };
+  }, [orders]);
 
   return (
-    <div className="w-screen h-screen bg-[url('/bg3.png')] bg-cover bg-center bg-no-repeat">
-      <AdminHeader />
-      <div className="w-full h-full bg-white/95 p-6 border-[#5C4033]/30 flex flex-col mt-[64px]">
-        <h1 className="text-3xl font-bold text-[#5C4033] mb-8 text-center font-serif">
-          All Orders
-        </h1>
-        <div className="flex-1 overflow-auto">
-          <table className="w-full border border-[#5C4033]/30 rounded-lg overflow-hidden">
-            <thead className="bg-[#5C4033]/80 text-white">
-              <tr>
-                <th className="px-4 py-3">Order No</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Products</th>
-                <th className="px-4 py-3">Total</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order._id} className="hover:bg-[#f8f5f2] transition-colors text-center">
-                  <td className="px-4 py-3 border">{order._id}</td>
-                  <td className="px-4 py-3 border">{order.shippingAddress?.name}</td>
-                  <td className="px-4 py-3 border">
-                    {order.products.map((p) => `${p.title} (x${p.quantity})`).join(", ")}
-                  </td>
-                  <td className="px-4 py-3 border">₹{order.totalAmount}</td>
-                  <td className="px-4 py-3 border">
-                    {new Date(order.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 border">
-                    <select
-                      value={order.status}
-                      onChange={(e) => handleStatusChange(order._id, e.target.value)}
-                      className="border rounded px-2 py-1 focus:ring-2 focus:ring-[#5C4033] text-[#5C4033]"
-                    >
-                      {statusOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3 border">
-                    {changedStatuses[order._id] && (
-                      <button
-                        onClick={() => handleSave(order._id)}
-                        className="bg-[#5C4033] text-black px-4 py-1 rounded hover:bg-[#3d2a20] transition-colors"
-                      >
-                        Save
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Total Orders"
+          value={orderStats.total}
+          icon={<ListChecks className="text-blue-500" />}
+          color="#3b82f6"
+        />
+        <StatCard
+          title="Pending/Processing"
+          value={orderStats.pending}
+          icon={<Loader className="text-orange-500" />}
+          color="#f97316"
+        />
+        <StatCard
+          title="Shipped Orders"
+          value={orderStats.shipped}
+          icon={<Truck className="text-green-500" />}
+          color="#22c55e"
+        />
       </div>
+
+      <Card className="bg-white/80 border-none shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-[#5C4033] font-serif">
+            Order List
+          </CardTitle>
+          <CardDescription>
+            Search, filter, and view customer orders <span className="text-xl font-bold">do not include # in order Number Search.</span>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Input
+                placeholder="Search by name, email, or Order ID..."
+                className="pl-10"
+                value={filters.search}
+                onChange={(e) => handleFilterChange("search", e.target.value)}
+              />
+            </div>
+            <Select
+              value={filters.status}
+              onValueChange={(value) => handleFilterChange("status", value)}
+            >
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Filter by status..." />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                {statusOptions.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={filters.sort}
+              onValueChange={(value) => handleFilterChange("sort", value)}
+            >
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Sort by..." />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                {sortOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order ID</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center py-10 text-[#5C4033]"
+                  >
+                    Loading orders...
+                  </TableCell>
+                </TableRow>
+              ) : orders.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center py-10 text-[#5C4033]"
+                  >
+                    No orders found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                orders.map((order) => (
+                  <TableRow
+                    key={order._id}
+                    onClick={() => handleOrderClick(order)}
+                    className="cursor-pointer hover:bg-[#f8f5f2]"
+                  >
+                    <TableCell className="font-mono text-xs">
+                      {order.orderNumber?.slice(-8)}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {order.shippingAddress.name}
+                    </TableCell>
+                    <TableCell>₹{order.totalAmount.toLocaleString()}</TableCell>
+                    <TableCell>
+                      {new Date(order.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusVariant(order.status) as any}>
+                        {order.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Fixed Dialog with proper state management */}
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
+        <DialogContent className="max-w-2xl bg-white">
+          {selectedOrder ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl text-[#5C4033] font-serif">
+                  Order Details
+                </DialogTitle>
+                <p className="text-sm text-gray-500">
+                  Order #{selectedOrder.orderNumber?.slice(-8)}
+                </p>
+              </DialogHeader>
+              <div className="space-y-6 py-4">
+                <div className="space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <User size={16} /> Customer Information
+                  </h3>
+                  <Separator />
+                  <p className="flex items-center gap-3 text-sm">
+                    <Mail size={14} className="text-gray-500" />{" "}
+                    {selectedOrder.shippingAddress.email}
+                  </p>
+                  <p className="flex items-center gap-3 text-sm">
+                    <Phone size={14} className="text-gray-500" />{" "}
+                    {selectedOrder.shippingAddress.phone}
+                  </p>
+                  <p className="flex items-center gap-3 text-sm">
+                    <Home size={14} className="text-gray-500" />{" "}
+                    {selectedOrder.shippingAddress.address}
+                  </p>
+                  <p className="flex items-center gap-3 text-sm">
+                    <Calendar size={14} className="text-gray-500" /> Placed on:{" "}
+                    {new Date(selectedOrder.createdAt).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Package size={16} /> Products Ordered
+                  </h3>
+                  <Separator />
+                  <div className="max-h-[200px] overflow-y-auto pr-2">
+                    {selectedOrder.products.map((item) => (
+                      <div
+                        key={item.productId._id}
+                        className="flex items-center gap-4 py-2 hover:bg-gray-50 rounded-md cursor-pointer p-2"
+                        onClick={() =>
+                          navigate(`/products/edit/${item.productId._id}`)
+                        }
+                      >
+                        <img
+                          src={
+                            item.productId.images?.[0] ||
+                            "https://via.placeholder.com/64"
+                          }
+                          alt={item.productId.title}
+                          className="w-16 h-16 rounded-md object-cover"
+                        />
+                        <div className="flex-1">
+                          <p className="font-medium">{item.productId.title}</p>
+                          <p className="text-sm text-gray-600">
+                            Quantity: {item.quantity}
+                          </p>
+                        </div>
+                        <p className="font-semibold">
+                          ₹{(item.price * item.quantity).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Truck size={16} /> Update Status
+                  </h3>
+                  <Separator />
+                  <div className="flex items-center gap-4 pt-2">
+                    <Label htmlFor="status-update" className="whitespace-nowrap">
+                      Order Status
+                    </Label>
+                    <Select 
+                      value={newStatus} 
+                      onValueChange={setNewStatus}
+                      disabled={isUpdating}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Set status..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        {statusOptions
+                          .filter((s) => s !== "all")
+                          .map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s.charAt(0).toUpperCase() + s.slice(1)}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleStatusUpdate}
+                      className="bg-[#5d4037] hover:bg-[#3e2f22]"
+                      disabled={isUpdating || newStatus === selectedOrder.status}
+                    >
+                      {isUpdating ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <Separator className="my-2" />
+                  <p className="text-lg font-bold">
+                    Total:{" "}
+                    <span className="text-green-600">
+                      ₹{selectedOrder.totalAmount.toLocaleString()}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-10">
+              <Loader className="animate-spin" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

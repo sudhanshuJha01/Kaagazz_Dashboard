@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { LayoutDashboard, Package, ClipboardList, Users } from "lucide-react";
+import { Package, ClipboardList, Users, LayoutDashboard } from "lucide-react";
 
 const AdminHeader = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -13,7 +13,7 @@ const AdminHeader = () => {
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/products", label: "Products", icon: Package },
     { href: "/orders", label: "Orders", icon: ClipboardList },
-    { href: "/customers", label: "Customers", icon: Users }, // <<< ADDED
+    { href: "/customers", label: "Customers", icon: Users },
   ];
 
   return (
@@ -53,7 +53,6 @@ const AdminHeader = () => {
       {/* Mobile Dropdown */}
       <div className={`absolute top-full left-0 w-full bg-white border-t border-gray-200 shadow-md lg:hidden z-50 transition-all duration-300 ease-in-out ${isMobileMenuOpen ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0 pointer-events-none"}`}>
         <div className="flex flex-col p-4 space-y-4">
-          {/* <<< CORRECTED ALL MOBILE LINKS */}
           {navLinks.map((link) => (
             <Link key={link.href} to={link.href} className="text-[#3d3121]" onClick={toggleMobileMenu}>
               {link.label}
