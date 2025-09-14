@@ -23,6 +23,7 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
 // --- Product API ---
 export const getProducts = () => apiFetch('/product/list');
 export const getProductById = (productId: string) => apiFetch(`/product/${productId}`);
+
 export const uploadProductImages = async (productId: string, files: File[]) => {
   const formData = new FormData();
   files.forEach(file => formData.append('images', file));
@@ -30,18 +31,48 @@ export const uploadProductImages = async (productId: string, files: File[]) => {
     method: 'POST',
     body: formData,
   });
-  if (!response.ok) throw new Error('Image upload failed');
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Image upload failed' }));
+    throw new Error(errorData.message || 'Image upload failed');
+  }
   return response.json();
 };
+
+// NEW: Remove specific images from a product
+export const removeProductImages = async (productId: string, imageUrls: string[]) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/product/${productId}/remove-images`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ imageUrls }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Failed to remove images' }));
+      throw new Error(errorData.message || 'Failed to remove images');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Remove images error:', error);
+    throw error;
+  }
+};
+
 export const deleteProduct = (productId: string) => apiFetch(`/product/delete/${productId}`, { method: 'DELETE' });
+
 export const updateProduct = (productId: string, productData: any) => apiFetch(`/product/update/${productId}`, {
   method: 'PUT',
   body: JSON.stringify(productData),
 });
+
 export const createProduct = (productData: any) => apiFetch('/product/create', {
   method: 'POST',
   body: JSON.stringify(productData),
 });
+
 export const applyBulkDiscount = (productIds: string[], discountPercent: number) => apiFetch(`/product/bulk-discount`, {
   method: 'PATCH',
   body: JSON.stringify({ productIds, discountPercent }),
@@ -55,7 +86,6 @@ export const sendMassEmail = (userEmails: string[], subject: string, body: strin
     body: JSON.stringify({ userEmails, subject, body })
 });
 
-// <<< CORRECTED & SIMPLIFIED FUNCTION
 export const getDashboardStats = (dateRange?: DateRange): Promise<{ stats: DashboardStats }> => {
   const params = new URLSearchParams();
   if (dateRange?.from) params.append('startDate', dateRange.from.toISOString());
@@ -70,10 +100,12 @@ interface GetOrdersParams {
   status?: string;
   search?: string;
 }
+
 export const updateOrderStatus = (orderId: string, status: string) => apiFetch(`/order/update-status/${orderId}`, {
   method: 'PATCH',
   body: JSON.stringify({ status }),
 });
+
 export const getOrders = (params: GetOrdersParams): Promise<{ orders: Order[] }> => {
   const query = new URLSearchParams();
   if (params.sort) query.append('sort', params.sort);

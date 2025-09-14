@@ -1,3 +1,4 @@
+import React from "react";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { getOrders, updateOrderStatus } from "../services/api";
 import type { Order } from "../types";
@@ -14,6 +15,17 @@ import {
   Truck,
   Loader,
   ListChecks,
+  Eye,
+  Filter,
+  SortAsc,
+  ChevronRight,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Package2,
+  TrendingUp,
+  RefreshCw,
 } from "lucide-react";
 import {
   Card,
@@ -68,6 +80,7 @@ const statusOptions = [
   "pending",
   "cancelled",
 ];
+
 const sortOptions = [
   { value: "newest", label: "Newest First" },
   { value: "oldest", label: "Oldest First" },
@@ -80,29 +93,83 @@ const StatCard = ({
   value,
   icon,
   color,
+  trend,
+  isLoading = false,
 }: {
   title: string;
   value: number;
   icon: React.ReactNode;
   color: string;
+  trend?: number;
+  isLoading?: boolean;
 }) => (
-  <Card className="bg-white/80 border-l-4" style={{ borderColor: color }}>
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium text-[#5C4033]">
+  <Card className="relative overflow-hidden bg-gradient-to-br from-white to-gray-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 group">
+    <div className="absolute inset-0 bg-gradient-to-br opacity-5" style={{ background: `linear-gradient(135deg, ${color}20, ${color}05)` }} />
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+      <CardTitle className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
         {title}
       </CardTitle>
-      {icon}
+      <div className="p-2 rounded-full" style={{ backgroundColor: `${color}15` }}>
+        {React.cloneElement(icon as React.ReactElement, { 
+          className: "h-5 w-5 transition-transform group-hover:scale-110",
+          style: { color }
+        })}
+      </div>
     </CardHeader>
-    <CardContent>
-      <div className="text-2xl font-bold">{value}</div>
+    <CardContent className="relative z-10">
+      <div className="flex items-baseline justify-between">
+        {isLoading ? (
+          <div className="h-8 w-16 bg-gray-200 animate-pulse rounded" />
+        ) : (
+          <div className="text-3xl font-bold text-gray-900">{value.toLocaleString()}</div>
+        )}
+        {trend !== undefined && (
+          <div className={`flex items-center text-xs ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <TrendingUp className={`h-3 w-3 mr-1 ${trend < 0 ? 'rotate-180' : ''}`} />
+            {Math.abs(trend)}%
+          </div>
+        )}
+      </div>
     </CardContent>
   </Card>
 );
+
+const StatusBadge = ({ status }: { status: string }) => {
+  const getStatusConfig = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "shipped":
+        return { variant: "default", color: "bg-green-100 text-green-800 border-green-200", icon: CheckCircle };
+      case "processing":
+        return { variant: "secondary", color: "bg-blue-100 text-blue-800 border-blue-200", icon: Clock };
+      case "pending":
+        return { variant: "secondary", color: "bg-yellow-100 text-yellow-800 border-yellow-200", icon: AlertCircle };
+      case "confirmed":
+        return { variant: "default", color: "bg-emerald-100 text-emerald-800 border-emerald-200", icon: CheckCircle };
+      case "rejected":
+        return { variant: "destructive", color: "bg-red-100 text-red-800 border-red-200", icon: XCircle };
+      case "cancelled":
+        return { variant: "destructive", color: "bg-red-100 text-red-800 border-red-200", icon: XCircle };
+      default:
+        return { variant: "default", color: "bg-gray-100 text-gray-800 border-gray-200", icon: Package };
+    }
+  };
+
+  const config = getStatusConfig(status);
+  const IconComponent = config.icon;
+
+  return (
+    <Badge className={`${config.color} font-medium px-3 py-1 flex items-center gap-1 border`}>
+      <IconComponent className="w-3 h-3" />
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </Badge>
+  );
+};
 
 const AdminOrders = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [newStatus, setNewStatus] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -115,9 +182,13 @@ const AdminOrders = () => {
   });
   const debouncedSearch = useDebounce(filters.search, 500);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (showRefreshing = false) => {
     try {
-      setLoading(true);
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       const params = { ...filters, search: debouncedSearch };
       const data = await getOrders(params);
       setOrders(data.orders || []);
@@ -126,6 +197,7 @@ const AdminOrders = () => {
       toast.error("Failed to fetch orders.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [filters.sort, filters.status, debouncedSearch]);
 
@@ -133,15 +205,13 @@ const AdminOrders = () => {
     fetchOrders();
   }, [fetchOrders]);
 
-  // Handle opening the dialog - Fixed version
+  // Handle opening the dialog
   const handleOrderClick = useCallback((order: Order, e?: React.MouseEvent) => {
-    // Prevent any potential event propagation issues
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
     
-    console.log("Opening dialog for order:", order._id); // Debug log
     setSelectedOrder(order);
     setNewStatus(order.status);
     setIsDialogOpen(true);
@@ -149,9 +219,7 @@ const AdminOrders = () => {
 
   // Handle closing the dialog
   const handleDialogClose = useCallback(() => {
-    console.log("Closing dialog"); // Debug log
     setIsDialogOpen(false);
-    // Clear state immediately instead of using timeout
     setSelectedOrder(null);
     setNewStatus("");
     setIsUpdating(false);
@@ -171,7 +239,6 @@ const AdminOrders = () => {
       setIsUpdating(true);
       await updateOrderStatus(selectedOrder._id, newStatus);
       
-      // Update the order in the local state immediately for better UX
       setOrders(prevOrders => 
         prevOrders.map(order => 
           order._id === selectedOrder._id 
@@ -183,9 +250,8 @@ const AdminOrders = () => {
       toast.success("Order status updated successfully!");
       handleDialogClose();
       
-      // Refresh the list after a short delay to ensure consistency
       setTimeout(() => {
-        fetchOrders();
+        fetchOrders(true);
       }, 500);
       
     } catch (error) {
@@ -195,303 +261,417 @@ const AdminOrders = () => {
     }
   };
 
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case "shipped":
-        return "success";
-      case "processing":
-        return "secondary";
-      case "pending":
-        return "secondary";
-      case "rejected":
-        return "destructive";
-      case "cancelled":
-        return "destructive";
-      default:
-        return "default";
-    }
-  };
-
   const orderStats = useMemo(() => {
-    return {
+    const stats = {
       total: orders.length,
-      pending: orders.filter(
-        (o) => o.status === "pending" || o.status === "processing"
-      ).length,
-      shipped: orders.filter((o) => o.status === "shipped").length,
+      pending: orders.filter(o => o.status === "pending" || o.status === "processing").length,
+      shipped: orders.filter(o => o.status === "shipped").length,
+      cancelled: orders.filter(o => o.status === "cancelled" || o.status === "rejected").length,
     };
+    
+    return stats;
   }, [orders]);
 
+  const handleRefresh = () => {
+    fetchOrders(true);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-8 p-6 bg-gradient-to-br from-gray-50 to-white min-h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Order Management</h1>
+          <p className="text-gray-600 mt-1">Monitor and manage customer orders</p>
+        </div>
+        
+        <Button 
+          onClick={handleRefresh} 
+          disabled={refreshing}
+          variant="outline"
+          className="flex items-center gap-2 hover:bg-gray-100"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Orders"
           value={orderStats.total}
-          icon={<ListChecks className="text-blue-500" />}
+          icon={<ListChecks />}
           color="#3b82f6"
+          isLoading={loading}
         />
         <StatCard
           title="Pending/Processing"
           value={orderStats.pending}
-          icon={<Loader className="text-orange-500" />}
-          color="#f97316"
+          icon={<Clock />}
+          color="#f59e0b"
+          isLoading={loading}
         />
         <StatCard
           title="Shipped Orders"
           value={orderStats.shipped}
-          icon={<Truck className="text-green-500" />}
-          color="#22c55e"
+          icon={<Truck />}
+          color="#10b981"
+          isLoading={loading}
+        />
+        <StatCard
+          title="Cancelled/Rejected"
+          value={orderStats.cancelled}
+          icon={<XCircle />}
+          color="#ef4444"
+          isLoading={loading}
         />
       </div>
 
-      <Card className="bg-white/80 border-none shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold text-[#5C4033] font-serif">
-            Order List
-          </CardTitle>
-          <CardDescription>
-            Search, filter, and view customer orders <span className="text-xl font-bold">do not include # in order Number Search.</span>
-          </CardDescription>
+      {/* Orders Table */}
+      <Card className="shadow-xl border-0 bg-white">
+        <CardHeader className="border-b bg-gradient-to-r from-gray-50 to-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Package2 className="w-6 h-6 text-[#5C4033]" />
+                Orders List
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Search, filter, and view customer orders
+                <span className="ml-2 text-orange-600 font-semibold">
+                  Note: Do not include # in order number search
+                </span>
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+        
+        <CardContent className="p-6">
+          {/* Filters */}
+          <div className="flex flex-col lg:flex-row gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search by name, email, or Order ID..."
-                className="pl-10"
+                placeholder="Search by customer name, email, or order ID..."
+                className="pl-10 bg-white border-gray-200 focus:border-[#5C4033] focus:ring-[#5C4033]"
                 value={filters.search}
                 onChange={(e) => handleFilterChange("search", e.target.value)}
               />
             </div>
-            <Select
-              value={filters.status}
-              onValueChange={(value) => handleFilterChange("status", value)}
-            >
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Filter by status..." />
-              </SelectTrigger>
-              <SelectContent className="bg-white">
-                {statusOptions.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.sort}
-              onValueChange={(value) => handleFilterChange("sort", value)}
-            >
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Sort by..." />
-              </SelectTrigger>
-              <SelectContent className="bg-white">
-                {sortOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            
+            <div className="flex gap-3">
+              <Select
+                value={filters.status}
+                onValueChange={(value) => handleFilterChange("status", value)}
+              >
+                <SelectTrigger className="w-full lg:w-[180px] bg-white">
+                  <Filter className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Filter by status..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white">
+                  {statusOptions.map((s) => (
+                    <SelectItem key={s} value={s} className="hover:bg-gray-50">
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select
+                value={filters.sort}
+                onValueChange={(value) => handleFilterChange("sort", value)}
+              >
+                <SelectTrigger className="w-full lg:w-[180px] bg-white">
+                  <SortAsc className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Sort by..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white">
+                  {sortOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="hover:bg-gray-50">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order ID</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-10 text-[#5C4033]"
-                  >
-                    Loading orders...
-                  </TableCell>
+
+          {/* Table */}
+          <div className="rounded-lg border border-gray-200 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-gradient-to-r from-gray-100 to-gray-50">
+                <TableRow className="border-gray-200">
+                  <TableHead className="font-semibold text-gray-900">Order ID</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Customer</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Total</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Date</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Status</TableHead>
+                  <TableHead className="font-semibold text-gray-900 w-12"></TableHead>
                 </TableRow>
-              ) : orders.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-10 text-[#5C4033]"
-                  >
-                    No orders found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                orders.map((order) => (
-                  <TableRow
-                    key={order._id}
-                    onClick={(e) => handleOrderClick(order, e)}
-                    className="cursor-pointer hover:bg-[#f8f5f2] transition-colors"
-                  >
-                    <TableCell className="font-mono text-xs">
-                      {order.orderNumber?.slice(-8)}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {order.shippingAddress?.name || 'N/A'}
-                    </TableCell>
-                    <TableCell>₹{order.totalAmount?.toLocaleString() || '0'}</TableCell>
-                    <TableCell>
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getStatusVariant(order.status) as any}>
-                        {order.status}
-                      </Badge>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-12">
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader className="w-8 h-8 animate-spin text-[#5C4033]" />
+                        <p className="text-gray-500 font-medium">Loading orders...</p>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : orders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-12">
+                      <div className="flex flex-col items-center gap-3">
+                        <Package className="w-12 h-12 text-gray-300" />
+                        <p className="text-gray-500 font-medium text-lg">No orders found</p>
+                        <p className="text-gray-400 text-sm">Try adjusting your search criteria</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  orders.map((order, index) => (
+                    <TableRow
+                      key={order._id}
+                      onClick={(e) => handleOrderClick(order, e)}
+                      className="cursor-pointer hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 group border-gray-100"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      <TableCell className="font-mono text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-[#5C4033] opacity-60"></div>
+                          #{order.orderNumber?.slice(-8) || 'N/A'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
+                            {order.shippingAddress?.name?.charAt(0) || 'U'}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              {order.shippingAddress?.name || 'Unknown'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {order.shippingAddress?.email || 'No email'}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-semibold text-lg text-green-600">
+                          ₹{order.totalAmount?.toLocaleString() || '0'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={order.status} />
+                      </TableCell>
+                      <TableCell>
+                        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Fixed Dialog with proper state management */}
+      {/* Order Details Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white">
           {selectedOrder ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="text-2xl text-[#5C4033] font-serif">
-                  Order Details
-                </DialogTitle>
-                <p className="text-sm text-gray-500">
-                  Order #{selectedOrder.orderNumber?.slice(-8) || 'N/A'}
-                </p>
+            <div className="space-y-6">
+              <DialogHeader className="border-b pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                      <Eye className="w-6 h-6 text-[#5C4033]" />
+                      Order Details
+                    </DialogTitle>
+                    <p className="text-gray-500 mt-1">
+                      Order #{selectedOrder.orderNumber?.slice(-8) || 'N/A'} • 
+                      Placed on {new Date(selectedOrder.createdAt).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+                  <StatusBadge status={selectedOrder.status} />
+                </div>
               </DialogHeader>
-              <div className="space-y-6 py-4">
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Customer Information */}
-                <div className="space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <User size={16} /> Customer Information
-                  </h3>
-                  <Separator />
-                  {selectedOrder.shippingAddress?.email && (
-                    <p className="flex items-center gap-3 text-sm">
-                      <Mail size={14} className="text-gray-500" />
-                      {selectedOrder.shippingAddress.email}
-                    </p>
-                  )}
-                  {selectedOrder.shippingAddress?.phone && (
-                    <p className="flex items-center gap-3 text-sm">
-                      <Phone size={14} className="text-gray-500" />
-                      {selectedOrder.shippingAddress.phone}
-                    </p>
-                  )}
-                  {selectedOrder.shippingAddress?.address && (
-                    <p className="flex items-center gap-3 text-sm">
-                      <Home size={14} className="text-gray-500" />
-                      {selectedOrder.shippingAddress.address}
-                    </p>
-                  )}
-                  <p className="flex items-center gap-3 text-sm">
-                    <Calendar size={14} className="text-gray-500" />
-                    Placed on: {new Date(selectedOrder.createdAt).toLocaleString()}
-                  </p>
-                </div>
-
-                {/* Products Ordered */}
-                <div className="space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Package size={16} /> Products Ordered
-                  </h3>
-                  <Separator />
-                  <div className="max-h-[200px] overflow-y-auto pr-2">
-                    {selectedOrder.products?.map((item) => (
-                      <div
-                        key={`${item.productId?._id}-${Math.random()}`}
-                        className="flex items-center gap-4 py-2 hover:bg-gray-50 rounded-md cursor-pointer p-2"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (item.productId?._id) {
-                            navigate(`/products/edit/${item.productId._id}`);
-                          }
-                        }}
-                      >
-                        <img
-                          src={
-                            item.productId?.images?.[0] ||
-                            "https://via.placeholder.com/64"
-                          }
-                          alt={item.productId?.title || 'Product'}
-                          className="w-16 h-16 rounded-md object-cover"
-                        />
-                        <div className="flex-1">
-                          <p className="font-medium">{item.productId?.title || 'Unknown Product'}</p>
-                          <p className="text-sm text-gray-600">
-                            Quantity: {item.quantity || 0}
-                          </p>
+                <div className="lg:col-span-2 space-y-6">
+                  <Card className="border border-gray-200">
+                    <CardHeader className="bg-gray-50 border-b">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <User className="w-5 h-5 text-blue-600" />
+                        Customer Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                      {selectedOrder.shippingAddress?.email && (
+                        <div className="flex items-center gap-3 p-2 rounded bg-gray-50">
+                          <Mail className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm">{selectedOrder.shippingAddress.email}</span>
                         </div>
-                        <p className="font-semibold">
-                          ₹{((item.price || 0) * (item.quantity || 0)).toLocaleString()}
-                        </p>
+                      )}
+                      {selectedOrder.shippingAddress?.phone && (
+                        <div className="flex items-center gap-3 p-2 rounded bg-gray-50">
+                          <Phone className="w-4 h-4 text-gray-500" />
+                          <span className="text-sm">{selectedOrder.shippingAddress.phone}</span>
+                        </div>
+                      )}
+                      {selectedOrder.shippingAddress?.address && (
+                        <div className="flex items-start gap-3 p-2 rounded bg-gray-50">
+                          <Home className="w-4 h-4 text-gray-500 mt-0.5" />
+                          <span className="text-sm">{selectedOrder.shippingAddress.address}</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Products */}
+                  <Card className="border border-gray-200">
+                    <CardHeader className="bg-gray-50 border-b">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Package className="w-5 h-5 text-green-600" />
+                        Products Ordered ({selectedOrder.products?.length || 0})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="max-h-80 overflow-y-auto">
+                        {selectedOrder.products?.map((item, index) => (
+                          <div
+                            key={`${item.productId?._id}-${index}`}
+                            className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer border-b last:border-b-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (item.productId?._id) {
+                                navigate(`/products/edit/${item.productId._id}`);
+                              }
+                            }}
+                          >
+                            <img
+                              src={item.productId?.images?.[0] || "https://via.placeholder.com/64"}
+                              alt={item.productId?.title || 'Product'}
+                              className="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900 truncate">
+                                {item.productId?.title || 'Unknown Product'}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Quantity: {item.quantity || 0}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Unit Price: ₹{(item.price || 0).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold text-lg text-green-600">
+                                ₹{((item.price || 0) * (item.quantity || 0)).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        )) || <p className="p-4 text-gray-500">No products found</p>}
                       </div>
-                    )) || <p className="text-gray-500">No products found</p>}
-                  </div>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                {/* Update Status */}
-                <div className="space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Truck size={16} /> Update Status
-                  </h3>
-                  <Separator />
-                  <div className="flex items-center gap-4 pt-2">
-                    <Label htmlFor="status-update" className="whitespace-nowrap">
-                      Order Status
-                    </Label>
-                    <Select 
-                      value={newStatus} 
-                      onValueChange={setNewStatus}
-                      disabled={isUpdating}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Set status..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        {statusOptions
-                          .filter((s) => s !== "all")
-                          .map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {s.charAt(0).toUpperCase() + s.slice(1)}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      onClick={handleStatusUpdate}
-                      className="bg-[#5d4037] hover:bg-[#3e2f22]"
-                      disabled={isUpdating || newStatus === selectedOrder.status}
-                    >
-                      {isUpdating ? "Saving..." : "Save"}
-                    </Button>
-                  </div>
-                </div>
+                {/* Order Management */}
+                <div className="space-y-6">
+                  <Card className="border border-gray-200">
+                    <CardHeader className="bg-gray-50 border-b">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Truck className="w-5 h-5 text-purple-600" />
+                        Order Management
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-4">
+                      <div>
+                        <Label htmlFor="status-update" className="text-sm font-medium text-gray-700">
+                          Update Status
+                        </Label>
+                        <Select 
+                          value={newStatus} 
+                          onValueChange={setNewStatus}
+                          disabled={isUpdating}
+                        >
+                          <SelectTrigger className="w-full mt-1">
+                            <SelectValue placeholder="Set status..." />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white">
+                            {statusOptions
+                              .filter((s) => s !== "all")
+                              .map((s) => (
+                                <SelectItem key={s} value={s} className="hover:bg-gray-50">
+                                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <Button
+                        onClick={handleStatusUpdate}
+                        className="w-full bg-[#5d4037] hover:bg-[#3e2f22]"
+                        disabled={isUpdating || newStatus === selectedOrder.status}
+                      >
+                        {isUpdating ? (
+                          <>
+                            <Loader className="w-4 h-4 mr-2 animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            Update Status
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
 
-                {/* Order Total */}
-                <div className="text-right">
-                  <Separator className="my-2" />
-                  <p className="text-lg font-bold">
-                    Total:{" "}
-                    <span className="text-green-600">
-                      ₹{selectedOrder.totalAmount?.toLocaleString() || '0'}
-                    </span>
-                  </p>
+                  {/* Order Summary */}
+                  <Card className="border border-gray-200">
+                    <CardHeader className="bg-gray-50 border-b">
+                      <CardTitle className="text-lg">Order Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Subtotal:</span>
+                          <span>₹{(selectedOrder.totalAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between font-semibold text-lg">
+                          <span>Total:</span>
+                          <span className="text-green-600">
+                            ₹{(selectedOrder.totalAmount || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
-            </>
+            </div>
           ) : (
-            <div className="flex items-center justify-center py-10">
-              <Loader className="animate-spin" />
+            <div className="flex items-center justify-center py-12">
+              <Loader className="animate-spin w-8 h-8" />
             </div>
           )}
         </DialogContent>
