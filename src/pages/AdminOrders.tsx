@@ -133,23 +133,29 @@ const AdminOrders = () => {
     fetchOrders();
   }, [fetchOrders]);
 
-  // Handle opening the dialog
-  const handleOrderClick = (order: Order) => {
+  // Handle opening the dialog - Fixed version
+  const handleOrderClick = useCallback((order: Order, e?: React.MouseEvent) => {
+    // Prevent any potential event propagation issues
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log("Opening dialog for order:", order._id); // Debug log
     setSelectedOrder(order);
     setNewStatus(order.status);
     setIsDialogOpen(true);
-  };
+  }, []);
 
   // Handle closing the dialog
-  const handleDialogClose = () => {
+  const handleDialogClose = useCallback(() => {
+    console.log("Closing dialog"); // Debug log
     setIsDialogOpen(false);
-    // Add a small delay to ensure dialog is fully closed before clearing state
-    setTimeout(() => {
-      setSelectedOrder(null);
-      setNewStatus("");
-      setIsUpdating(false);
-    }, 150);
-  };
+    // Clear state immediately instead of using timeout
+    setSelectedOrder(null);
+    setNewStatus("");
+    setIsUpdating(false);
+  }, []);
 
   const handleFilterChange = (
     key: "sort" | "status" | "search",
@@ -323,16 +329,16 @@ const AdminOrders = () => {
                 orders.map((order) => (
                   <TableRow
                     key={order._id}
-                    onClick={() => handleOrderClick(order)}
-                    className="cursor-pointer hover:bg-[#f8f5f2]"
+                    onClick={(e) => handleOrderClick(order, e)}
+                    className="cursor-pointer hover:bg-[#f8f5f2] transition-colors"
                   >
                     <TableCell className="font-mono text-xs">
                       {order.orderNumber?.slice(-8)}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {order.shippingAddress.name}
+                      {order.shippingAddress?.name || 'N/A'}
                     </TableCell>
-                    <TableCell>₹{order.totalAmount.toLocaleString()}</TableCell>
+                    <TableCell>₹{order.totalAmount?.toLocaleString() || '0'}</TableCell>
                     <TableCell>
                       {new Date(order.createdAt).toLocaleDateString()}
                     </TableCell>
@@ -350,8 +356,8 @@ const AdminOrders = () => {
       </Card>
 
       {/* Fixed Dialog with proper state management */}
-      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent className="max-w-2xl bg-white">
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl bg-white max-h-[90vh] overflow-y-auto">
           {selectedOrder ? (
             <>
               <DialogHeader>
@@ -359,69 +365,81 @@ const AdminOrders = () => {
                   Order Details
                 </DialogTitle>
                 <p className="text-sm text-gray-500">
-                  Order #{selectedOrder.orderNumber?.slice(-8)}
+                  Order #{selectedOrder.orderNumber?.slice(-8) || 'N/A'}
                 </p>
               </DialogHeader>
               <div className="space-y-6 py-4">
+                {/* Customer Information */}
                 <div className="space-y-2">
                   <h3 className="font-semibold flex items-center gap-2">
                     <User size={16} /> Customer Information
                   </h3>
                   <Separator />
+                  {selectedOrder.shippingAddress?.email && (
+                    <p className="flex items-center gap-3 text-sm">
+                      <Mail size={14} className="text-gray-500" />
+                      {selectedOrder.shippingAddress.email}
+                    </p>
+                  )}
+                  {selectedOrder.shippingAddress?.phone && (
+                    <p className="flex items-center gap-3 text-sm">
+                      <Phone size={14} className="text-gray-500" />
+                      {selectedOrder.shippingAddress.phone}
+                    </p>
+                  )}
+                  {selectedOrder.shippingAddress?.address && (
+                    <p className="flex items-center gap-3 text-sm">
+                      <Home size={14} className="text-gray-500" />
+                      {selectedOrder.shippingAddress.address}
+                    </p>
+                  )}
                   <p className="flex items-center gap-3 text-sm">
-                    <Mail size={14} className="text-gray-500" />{" "}
-                    {selectedOrder.shippingAddress.email}
-                  </p>
-                  <p className="flex items-center gap-3 text-sm">
-                    <Phone size={14} className="text-gray-500" />{" "}
-                    {selectedOrder.shippingAddress.phone}
-                  </p>
-                  <p className="flex items-center gap-3 text-sm">
-                    <Home size={14} className="text-gray-500" />{" "}
-                    {selectedOrder.shippingAddress.address}
-                  </p>
-                  <p className="flex items-center gap-3 text-sm">
-                    <Calendar size={14} className="text-gray-500" /> Placed on:{" "}
-                    {new Date(selectedOrder.createdAt).toLocaleString()}
+                    <Calendar size={14} className="text-gray-500" />
+                    Placed on: {new Date(selectedOrder.createdAt).toLocaleString()}
                   </p>
                 </div>
 
+                {/* Products Ordered */}
                 <div className="space-y-2">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Package size={16} /> Products Ordered
                   </h3>
                   <Separator />
                   <div className="max-h-[200px] overflow-y-auto pr-2">
-                    {selectedOrder.products.map((item) => (
+                    {selectedOrder.products?.map((item) => (
                       <div
-                        key={item.productId._id}
+                        key={`${item.productId?._id}-${Math.random()}`}
                         className="flex items-center gap-4 py-2 hover:bg-gray-50 rounded-md cursor-pointer p-2"
-                        onClick={() =>
-                          navigate(`/products/edit/${item.productId._id}`)
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (item.productId?._id) {
+                            navigate(`/products/edit/${item.productId._id}`);
+                          }
+                        }}
                       >
                         <img
                           src={
-                            item.productId.images?.[0] ||
+                            item.productId?.images?.[0] ||
                             "https://via.placeholder.com/64"
                           }
-                          alt={item.productId.title}
+                          alt={item.productId?.title || 'Product'}
                           className="w-16 h-16 rounded-md object-cover"
                         />
                         <div className="flex-1">
-                          <p className="font-medium">{item.productId.title}</p>
+                          <p className="font-medium">{item.productId?.title || 'Unknown Product'}</p>
                           <p className="text-sm text-gray-600">
-                            Quantity: {item.quantity}
+                            Quantity: {item.quantity || 0}
                           </p>
                         </div>
                         <p className="font-semibold">
-                          ₹{(item.price * item.quantity).toLocaleString()}
+                          ₹{((item.price || 0) * (item.quantity || 0)).toLocaleString()}
                         </p>
                       </div>
-                    ))}
+                    )) || <p className="text-gray-500">No products found</p>}
                   </div>
                 </div>
 
+                {/* Update Status */}
                 <div className="space-y-2">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Truck size={16} /> Update Status
@@ -459,12 +477,13 @@ const AdminOrders = () => {
                   </div>
                 </div>
 
+                {/* Order Total */}
                 <div className="text-right">
                   <Separator className="my-2" />
                   <p className="text-lg font-bold">
                     Total:{" "}
                     <span className="text-green-600">
-                      ₹{selectedOrder.totalAmount.toLocaleString()}
+                      ₹{selectedOrder.totalAmount?.toLocaleString() || '0'}
                     </span>
                   </p>
                 </div>
